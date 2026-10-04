@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python-version: "3.9"
+          - os: ubuntu-24.04
+            python-version: "3.13"
+          - os: macos-latest
+            python-version: "3.13"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m unittest discover tests -v
+
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install .
+      - name: Installer adds the five hooks, then nothing on a second run
+        run: |
+          orcabridge-install --dry-run --settings "$RUNNER_TEMP/settings.json" | grep -c "would add" | grep -qx 5
+          orcabridge-install --settings "$RUNNER_TEMP/settings.json"
+          orcabridge-install --settings "$RUNNER_TEMP/settings.json" | grep -q "nothing to add"
+          grep -q "site-packages/orcabridge/self_compact_hook.py" "$RUNNER_TEMP/settings.json"
+      - name: Installed hooks run
+        env:
+          SESSION_NOTES_DIR: ${{ runner.temp }}/notes
+        run: |
+          cd "$RUNNER_TEMP"
+          stop=$(python -c "import json; print(json.load(open('settings.json'))['hooks']['Stop'][0]['hooks'][0]['command'])")
+          start=$(python -c "import json; print(json.load(open('settings.json'))['hooks']['SessionStart'][0]['hooks'][0]['command'])")
+          echo '{"session_id": "0123abcd-0001", "source": "startup"}' | $start | grep -q "session notes file"
+          echo '{"session_id": "0123abcd-0001"}' | $stop
+          grep -q "hook skip: not orca" "$SESSION_NOTES_DIR/state/self-compact.log"
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install ruff==0.15.20
+      - run: ruff check .
+      - run: ruff format --check .

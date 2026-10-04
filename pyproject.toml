@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orcabridge"
+dynamic = ["version"]
+description = "Session notes and automatic compaction for Claude Code, through the Orca terminal app"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: MacOS",
+]
+
+[project.urls]
+Homepage = "https://github.com/agarwaldipesh/orcabridge"
+
+[project.scripts]
+orcabridge-install = "orcabridge.install:main"
+
+[tool.setuptools]
+packages = ["orcabridge"]
+
+[tool.setuptools.dynamic]
+version = { attr = "orcabridge.__version__" }
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+# UP031/UP032 would rewrite every %-format into an f-string; E731 allows small named lambdas.
+ignore = ["UP031", "UP032", "E731"]
+
+[tool.ruff.format]
+quote-style = "preserve"

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.log
+*.tmp
+state/
+self-compact-*.json
+bridge-sent-*.json
+build/
+dist/
+*.egg-info/
