@@ -1,9 +1,24 @@
 # orcabridge
 
-[![CI](https://github.com/agarwaldipesh/orcabridge/actions/workflows/ci.yml/badge.svg)](https://github.com/agarwaldipesh/orcabridge/actions/workflows/ci.yml)
+**Long Claude Code sessions that never lose the plot.**
 
-Keep a long Claude Code session's work when its context is compacted or cleared, and (in Orca)
-let the session compact itself at a natural break instead of in the middle of a task.
+[![CI](https://github.com/agarwaldipesh/orcabridge/actions/workflows/ci.yml/badge.svg)](https://github.com/agarwaldipesh/orcabridge/actions/workflows/ci.yml)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+![Standard library only](https://img.shields.io/badge/dependencies-none-brightgreen)
+![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
+orcabridge keeps a long Claude Code session's work when its context is compacted or cleared, and
+(in [Orca](https://www.onorca.dev/)) lets the session compact itself at a natural break instead of
+in the middle of a task.
+
+- **Nothing important is lost.** Each session keeps its own notes file; after `/compact` (and, in
+  Orca, after `/clear`), the notes and your last messages are pasted back, word for word.
+- **Compaction at the right moment.** The session itself decides when a task is done and asks
+  for `/compact` (same task) or `/clear` (new task).
+- **Never types over you.** The command is sent only once you have had time to read the reply,
+  into an empty input box, and is cancelled by any sign of activity.
+- **Zero dependencies.** Plain Python 3.9+, five Claude Code hooks, one install command.
 
 ## The problem
 
@@ -13,6 +28,47 @@ were on, ideas already ruled out. Compaction also tends to happen mid-task. And 
 the new session knows nothing about the old one.
 
 ## How it works
+
+### The life of a long session
+
+```mermaid
+flowchart TD
+    A["Session starts<br/>told where its notes file is"] --> B["Works on a task"]
+    B --> C{"Context past 200K,<br/>then every +100K?"}
+    C -- no --> B
+    C -- yes --> D["Reminded: at the next natural break,<br/>refresh notes and choose<br/>compact or clear"]
+    D --> E["Turn ends: Stop hook"]
+    E --> F["Quiet wait and safety checks"]
+    F --> G["/compact or /clear<br/>typed through Orca"]
+    G --> H["Notes and last messages<br/>pasted back"]
+    H --> B
+```
+
+### What happens when a turn ends
+
+```mermaid
+sequenceDiagram
+    participant S as Claude Code session
+    participant H as Stop hook
+    participant W as Background waiter
+    participant O as Orca terminal
+    S->>H: turn ends
+    H->>H: ready file says compact or clear?<br/>(or past the 500K backstop)
+    H-->>W: start, detached
+    W->>O: read status and screen
+    Note over W,O: wait for the turn to end, then<br/>3 quiet minutes if you typed recently
+    W->>O: type one probe character
+    O-->>W: box reads exactly that character?
+    alt anything else on screen, or any new event
+        W->>O: erase the probe, cancel (nothing sent)
+    else box was empty
+        W->>O: erase the probe, send /compact or /clear
+        O->>S: compaction runs
+        S->>S: SessionStart pastes notes and last words back
+    end
+```
+
+### Step by step
 
 1. **Notes file.** Each session gets a notes file, `<notes dir>/<session id>.md`. At session start
    it is told the path and the sections to fill (purpose, goal, done, open problems, the user's
@@ -48,9 +104,20 @@ the new session knows nothing about the old one.
 9. **Last net.** Claude Code's own `autoCompactWindow` still compacts sessions that never stop;
    the notes are pasted back afterwards just the same.
 
-Parts 1, 6-7 and 9 (notes, saved words, paste-back, the last net) work in plain Claude Code.
-The reminders, the self-compaction and the `/clear` handover need Orca and its `orca` CLI
-(by Stably AI), which can read and type into the session's terminal.
+### What needs Orca
+
+| Part | Plain Claude Code | In Orca |
+|---|:---:|:---:|
+| Notes file per session (1) | ✅ | ✅ |
+| Last words saved before compaction (6) | ✅ | ✅ |
+| Notes pasted back after compaction (7) | ✅ | ✅ |
+| Claude Code's own auto-compact as last net (9) | ✅ | ✅ |
+| Reminders at 200K, +100K (2) | | ✅ |
+| Self-compaction at a natural break (3-5) | | ✅ |
+| `/clear` handover to the next session (8) | | ✅ |
+
+The Orca-only parts need Orca (by Stably) and its `orca` CLI, which can read and type into the
+session's terminal.
 
 ## Install
 
@@ -127,16 +194,18 @@ wait is skipped. If the file is missing, the wait always happens.
 
 ## Files
 
-All code is in the `orcabridge/` package:
+```text
+orcabridge/
+├── session_notes.py       notes, reminders, save before compaction, paste-back
+│                          (PreCompact, SessionStart, PostToolUse, SessionEnd)
+├── self_compact_hook.py   the Stop hook that decides whether to compact or clear
+├── orca_compact.py        the background waiter that types the command through Orca
+└── install.py             adds the hooks to ~/.claude/settings.json (orcabridge-install)
+tests/                     unit tests; everything mocked, nothing is typed anywhere
+```
 
-- `session_notes.py` - notes, reminders, save before compaction, paste-back (PreCompact,
-  SessionStart, PostToolUse, SessionEnd).
-- `self_compact_hook.py` - the Stop hook that decides whether to compact or clear.
-- `orca_compact.py` - the background waiter that types the command through Orca.
-- `install.py` - adds the hooks to `~/.claude/settings.json` (the `orcabridge-install` command).
-
-Tests are in `tests/`: run `python3 -m unittest discover tests` from the repository root
-(everything mocked; nothing is typed anywhere). See CONTRIBUTING.md for lint.
+Run the tests with `python3 -m unittest discover tests` from the repository root. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for lint.
 
 ## Limits
 
@@ -150,3 +219,20 @@ Tests are in `tests/`: run `python3 -m unittest discover tests` from the reposit
   compaction this time (the waiter logs one line per decision in `self-compact.log`, never
   transcript content).
 - macOS paths are the defaults; elsewhere set the variables above.
+
+## About
+
+orcabridge was built by [@agarwaldipesh](https://github.com/agarwaldipesh) to keep many
+long-running Claude Code sessions productive side by side in Orca. It grew out of daily use:
+the same approach has run hundreds of automatic compactions across real working sessions before
+it was packaged here.
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[changelog](CHANGELOG.md).
+
+orcabridge is an independent project and is not affiliated with Anthropic or Stably. Claude
+Code is a product of Anthropic; Orca is a product of Stably.
+
+## License
+
+[MIT](LICENSE)
